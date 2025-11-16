@@ -1,234 +1,306 @@
-# Kreatif CV Oluşturucu - Backend Entegrasyon Kılavuzu (v2.0 - Kapsamlı Sürüm)
+# Kreatif CV Oluşturucu - Backend Entegrasyon Kılavuzu (AI için)
 
-Bu belge, Kreatif CV Oluşturucu frontend uygulamasını kalıcı bir backend servisine bağlamak için gereken API endpoint'lerini, veri modellerini ve iş mantığını detaylandırmaktadır. Bu kılavuz, backend geliştirme sürecinin temelini oluşturur.
+**DİKKAT: Bu belge Gemini ve ChatGPT gibi Yapay Zeka (AI) dil modelleri için hazırlanmıştır.** Amacı, mevcut ve tam fonksiyonel bir frontend uygulaması için sıfırdan, uyumlu bir backend oluşturma sürecini yönlendirmektir. Lütfen bu kılavuzu dikkatlice oku ve backend kodunu buradaki spesifikasyonlara göre oluştur.
 
-## 0. Başlamadan Önce: Mevcut Durum ve Amaç
+## 0. Projeye Genel Bakış ve Amaç
 
-Şu an elinizdeki proje, tüm özellikleriyle çalışan, **bağımsız bir frontend uygulamasıdır**. Kullanıcı bilgileri, CV'ler ve diğer veriler, kalıcı bir veritabanı yerine tarayıcının **`localStorage`**'ında saklanmaktadır. Bu, uygulamanın sunucusuz bir şekilde test edilmesini ve tüm kullanıcı arayız akışlarının deneyimlenmesini sağlar.
+Elinizdeki proje, **Kreatif CV Oluşturucu** adında, React tabanlı, **tamamen işlevsel bir frontend uygulamasıdır.** Şu anki haliyle, tüm veriler (kullanıcı bilgileri, CV'ler, ayarlar vb.) kalıcı bir veritabanı yerine tarayıcının **`localStorage`**'ında saklanmaktadır. Bu, uygulamanın sunucusuz olarak test edilmesini ve tüm kullanıcı arayüz akışlarının deneyimlenmesini sağlar.
 
-**Bu kılavuzun amacı, bu `localStorage` tabanlı demo'yu, aşağıda belirtilen API endpoint'lerini uygulayarak gerçek bir veritabanına sahip, çok kullanıcılı bir web uygulamasına dönüştürmektir.**
+**Bu kılavuzun amacı, bu `localStorage` tabanlı demoyu, aşağıda belirtilen API endpoint'lerini uygulayarak gerçek bir veritabanına sahip, çok kullanıcılı, güvenli ve ölçeklenebilir bir web uygulamasına dönüştürmektir.**
 
----
+### Proje Kök Klasör Yapısı
 
-## 1. Lokal Geliştirme Ortamı ve API Anahtarı
+AI olarak, kodlarını oluşturacağın klasör yapısı şu şekildedir:
 
-Backend'i geliştirirken frontend'i lokal olarak çalıştırmak ve test etmek isteyeceksiniz.
-
-### Kurulum Adımları
-1.  Projeyi bir klasöre açın.
-2.  Terminalde `npm install` komutu ile bağımlılıkları kurun.
-3.  Projenin ana dizininde **`.env.local`** adında bir dosya oluşturun.
-4.  Bu dosyanın içine Gemini API anahtarınızı ekleyin:
-    ```env
-    VITE_API_KEY=BURAYA_GERÇEK_GEMINI_API_ANAHTARINIZI_YAPIŞTIRIN
-    ```
-5.  `npm run dev` komutu ile geliştirme sunucusunu başlatın.
-6.  Tarayıcınızda `http://localhost:5173` (veya terminalde belirtilen port) adresine gidin.
-
-Bu adımlar, frontend'in yapay zeka özelliklerinin (`metin iyileştirme`, `CV'den veri çıkarma`) lokalde çalışmasını sağlayacaktır. Backend'e geçiş yapıldığında bu anahtar backend'e taşınmalıdır.
-
----
-
-## 2. Genel Prensipler
-
-- **API Tipi:** RESTful API
-- **Veri Formatı:** JSON
-- **Kimlik Doğrulama:** JWT (JSON Web Tokens). Kullanıcı giriş yaptığında bir token oluşturulur ve sonraki tüm yetkili isteklerde `Authorization: Bearer <token>` başlığı ile gönderilir.
-- **API Versiyonlama:** Tüm endpoint'ler `/api/v1/` ön eki ile sunulmalıdır. (Örn: `/api/v1/users/me`)
-- **Hata Yönetimi:** API, standart HTTP durum kodları (200, 201, 400, 401, 403, 404, 500) ve açıklayıcı JSON hata mesajları (`{ "error": "Mesaj..." }`) döndürmelidir.
-
----
-
-## 3. Kritik Güvenlik Maddeleri (ZORUNLU)
-
-Bu maddeler, veri sızıntılarını ve güvenlik zafiyetlerini önlemek için **KESİNLİKLE** uygulanmalıdır.
-
-- **API Anahtarını Gizleme:** Gemini API anahtarı **ASLA** frontend kodunda bırakılmamalıdır. Yapay zeka ile ilgili tüm işlemler (metin iyileştirme, CV ayrıştırma) backend'de yapılmalı ve anahtar sunucu tarafında ortam değişkeni (environment variable) olarak saklanmalıdır. Bu, anahtarınızın çalınmasını engeller.
-- **Şifre Hash'leme (Password Hashing):** Şifreler **ASLA** veritabanında düz metin olarak saklanmamalıdır. **bcrypt** gibi adaptif ve "salt" kullanan bir algoritma **ZORUNLUDUR**.
-- **İletişim Güvenliği:** Production ortamında frontend ve backend arasındaki tüm iletişim **HTTPS** üzerinden yapılmalıdır.
-- **Sunucu Tarafı Doğrulama (Input Validation):** Frontend'den gelen **TÜM** veriler sunucu tarafında yeniden doğrulanmalıdır. Asla istemciye güvenmeyin. Bu, XSS, SQL Injection ve diğer enjeksiyon saldırılarını önler.
-- **Yetkilendirme (Authorization):** Bir kullanıcının başka bir kullanıcının verilerine (örneğin CV'lerine) erişemediğinden emin olun. Her istekte, işlem yapılmak istenen kaynağın (CV, profil vb.) o anki kullanıcıya ait olduğu kontrol edilmelidir.
-
----
-
-## 4. Veri Modelleri (Veritabanı Şeması)
-
-Veritabanı şemalarınız, frontend'deki `types.ts` dosyasında tanımlanan arayüzlerle uyumlu olmalıdır. Ana modeller şunlardır:
-
-### User (Kullanıcı)
-
-```json
-{
-  "_id": "string", // Veritabanı ID'si (örn: MongoDB ObjectID, UUID)
-  "email": "string", // Unique, indexli
-  "fullName": "string",
-  "password": "string", // Hash'lenmiş (bcrypt)
-  "role": "'user' | 'admin'", // Varsayılan: 'user'
-  "status": "'active' | 'banned'", // Varsayılan: 'active'
-  "joinDate": "ISO8601 Date",
-}
 ```
-
-### CVData (CV Verisi)
-
-```json
-{
-  "_id": "string",
-  "userId": "string", // User modeline referans (_id). Indexli olmalı.
-  "title": "string",
-  "personalInfo": { "..."},
-  "summary": "string",
-  "experience": "Experience[]",
-  "education": "Education[]",
-  "skills": "Skill[]",
-  // ... diğer alanlar types.ts'deki gibi
-  "createdAt": "ISO8601 Date",
-  "lastUpdated": "ISO8601 Date"
-}
-```
-
-### AdBanner (Reklam Banner'ı)
-
-```json
-{
-  "_id": "string",
-  "imageUrl": "string",
-  "linkUrl": "string",
-  "placement": "'dashboard' | 'templates'",
-  "isActive": "boolean"
-}
+CreativeCv/
+├── frontend/         <-- MEVCUT VE TAM OLAN FRONTEND KODLARI BU KLASÖRDE
+│   ├── components/
+│   ├── hooks/
+│   ├── i18n/
+│   ├── services/
+│   ├── templates/
+│   ├── utils/
+│   ├── App.tsx
+│   ├── index.html
+│   └── ... (diğer tüm frontend dosyaları)
+│
+└── backend/          <-- BU KLASÖR ŞU ANDA BOŞ. TÜM BACKEND KODLARINI
+    │                   (sunucu, veritabanı modelleri, controller'lar vb.)
+    │                   BU KLASÖRÜN İÇİNE OLUŞTURMALISIN.
+    └── (package.json, server.js, models/, routes/ etc.)
 ```
 
 ---
 
-## 5. API Endpoints ve Frontend Bağlantıları
+## 1. Frontend Mimarisi ve Dosya Dökümü
 
-### 5.1. Kimlik Doğrulama (`/api/v1/auth`)
+Backend'i oluşturmadan önce, etkileşimde olacağın frontend'i çok iyi anlaman gerekiyor. İşte frontend projesinin detaylı dökümü:
 
-- **`POST /register`**
-  - **Açıklama:** Yeni kullanıcı kaydı oluşturur.
-  - **Frontend Karşılığı:** "Kayıt Ol" sayfasındaki form gönderildiğinde tetiklenir.
-  - **Request Body:** `{ "fullName": "string", "email": "string", "password": "string" }`
-  - **Response (Success):** `201 Created` - `{ "token": "jwt_token", "user": { ... } }`
+### `frontend/` Kök Dizini
 
-- **`POST /login`**
-  - **Açıklama:** Kullanıcı girişi yapar ve JWT döndürür. **İş mantığı, kullanıcının `status` alanını kontrol etmeli ve 'banned' ise girişi reddetmelidir.**
-  - **Frontend Karşılığı:** "Giriş Yap" sayfasındaki form gönderildiğinde `App.tsx` içerisindeki `handleLogin` fonksiyonu tarafından çağrılır.
-  - **Request Body:** `{ "email": "string", "password": "string" }`
-  - **Response (Success):** `200 OK` - `{ "token": "jwt_token", "user": { ... } }`
-  - **Response (Error):** `403 Forbidden` (Kullanıcı yasaklı).
+-   **`index.html`**: Uygulamanın giriş noktası. TailwindCSS, FontAwesome, Google Fonts, PDF.js ve Mammoth.js gibi harici kütüphaneleri yükler.
+-   **`index.tsx`**: React uygulamasını `root` div'ine bağlayan (mount eden) dosya.
+-   **`App.tsx`**: **EN ÖNEMLİ BİLEŞEN.** Uygulamanın kalbidir.
+    -   **Durum Yönetimi (State Management):** `useState` ve `useEffect` hook'ları ile tüm global durumları yönetir: `page` (hangi sayfanın gösterileceği), `currentUser` (giriş yapmış kullanıcı), `allUsers`, `allCVs` (admin paneli için tüm veriler). **Senin görevin buradaki `localStorage` işlemlerini API çağrıları ile değiştirmek.**
+    -   **Yönlendirme (Routing):** `renderPage` fonksiyonu ile hangi sayfa bileşeninin render edileceğine karar verir.
+    -   **Ana İş Mantığı:** `handleLogin`, `handleLogout`, `handleSaveCV`, `handleDeleteCV` gibi tüm temel fonksiyonları içerir. Bu fonksiyonlar, backend'deki API endpoint'lerini çağıracak şekilde güncellenmelidir.
+-   **`types.ts`**: Uygulamadaki tüm TypeScript arayüzlerini (`User`, `CVData`, `Experience`, `Skill` vb.) barındırır. **Backend'deki veritabanı modellerin BU DOSYAYLA %100 UYUMLU OLMALIDIR.**
+-   **`services.ts`**: Yapay zeka (Gemini API) ile ilgili fonksiyonları (`enhanceTextWithAI`, `parseCVWithAI`) içerir. **Bu dosya, backend entegrasyonu sırasında en çok değişecek dosyalardan biridir.** Gemini API çağrıları frontend'den kaldırılıp backend'e taşınacaktır.
+-   **`templates.tsx`**: Tüm CV şablonu bileşenlerini tek bir yerden export eder.
 
-- **`GET /me`**
-  - **Açıklama:** Mevcut token'a sahip kullanıcının bilgilerini döndürür. Sayfa yenilendiğinde oturumu doğrulamak için kullanılır.
-  - **Frontend Karşılığı:** Uygulama ilk yüklendiğinde (`App.tsx` içindeki `useEffect`), `localStorage`'da token varsa kullanıcının oturumunu doğrulamak için çağrılır.
-  - **Yetki:** Geçerli token.
-  - **Response (Success):** `200 OK` - `{ "user": { ... } }` (şifre hariç).
+### `frontend/components/` Klasörü
 
-### 5.2. CV Yönetimi (`/api/v1/cvs`)
+-   **`layout/`**:
+    -   `Header.tsx`: Üst navigasyon çubuğu. Kullanıcı giriş yapmışsa profil menüsünü, yapmamışsa giriş butonunu gösterir.
+    -   `Footer.tsx`: Alt bilgi çubuğu.
+-   **`pages/`**: Her biri bir sayfayı temsil eden ana bileşenler.
+    -   `HomePage.tsx`: Uygulamanın ana sayfası.
+    -   `LoginPage.tsx`: Kullanıcı giriş formu. `onLogin` prop'u ile `App.tsx`'deki `handleLogin`'i tetikler.
+    -   `DashboardPage.tsx`: Kullanıcının kendi CV'lerini listelediği, yeni CV oluşturduğu veya sildiği kontrol paneli.
+    -   `CVEditorPage.tsx`: **Uygulamanın en karmaşık bileşeni.** CV oluşturma ve düzenleme arayüzü. Formlar, AI metin geliştirme butonu ve canlı önizleme içerir. Değişiklikler yapıldıkça `onSaveCV` prop'u ile `App.tsx`'deki `handleSaveCV`'yi tetikler.
+    -   `AdminPage.tsx`: Yönetici paneli. Kullanıcıları, reklamları ve istatistikleri yönetir.
+    -   `ProfileSettingsPage.tsx`: Kullanıcının profil bilgilerini ve şifresini güncellediği sayfa.
+    -   `TemplatesPage.tsx` & `AboutPage.tsx`: Statik içerik sayfaları.
+-   **`ui/`**: Yeniden kullanılabilir küçük arayüz bileşenleri.
+    -   `Icon.tsx`: FontAwesome ikonlarını gösterir.
+    -   `CVUploader.tsx`: Kullanıcının PDF/DOCX formatındaki CV'sini yüklemesini sağlar, metni çıkarır ve AI ile ayrıştırma için `services.ts`'deki fonksiyonu tetikler.
+    -   `AdminUserModal.tsx`: Admin panelinde bir kullanıcıyı düzenlemek için açılan pencere.
+-   **`editor/`**:
+    -   `CVPreview.tsx`: `CVEditorPage`'de CV'nin canlı önizlemesini gösteren bileşen.
 
-- **`GET /`**
-  - **Açıklama:** Giriş yapmış kullanıcıya ait tüm CV'leri listeler.
-  - **Frontend Karşılığı:** Kullanıcı "Kontrol Paneli" (`DashboardPage`) sayfasına girdiğinde çağrılır.
-  - **Yetki:** Geçerli token.
-  - **Response (Success):** `200 OK` - `[CVData]`.
+### Diğer Klasörler
 
-- **`POST /`**
-  - **Açıklama:** Yeni bir CV oluşturur.
-  - **Frontend Karşılığı:** `DashboardPage`'de "Yeni CV Oluştur" butonuna tıklandığında veya `CVUploader` ile mevcut bir CV yüklendiğinde (`handleNewCV` fonksiyonu tetiklenir) çağrılır.
-  - **Yetki:** Geçerli token.
-  - **Request Body:** `CVData` nesnesi.
-  - **Response (Success):** `201 Created` - Oluşturulan `CVData` nesnesi.
-
-- **`PUT /:id`**
-  - **Açıklama:** Belirtilen ID'ye sahip CV'yi günceller.
-  - **Frontend Karşılığı:** `CVEditorPage`'de kullanıcı değişiklik yaptığında (`handleSaveCV` fonksiyonu aracılığıyla, debounced olarak) veya "Bitti" butonuna (`handleSaveAndExit`) tıkladığında çağrılır.
-  - **Yetki:** Geçerli token (ve kullanıcının sadece kendi CV'sini düzenlediğinden emin olunmalı).
-  - **Request Body:** Güncellenmiş `CVData` alanları.
-  - **Response (Success):** `200 OK` - Güncellenmiş `CVData` nesnesi.
-
-- **`DELETE /:id`**
-  - **Açıklama:** Belirtilen ID'ye sahip CV'yi siler.
-  - **Frontend Karşılığı:** `DashboardPage`'de `handleDeleteCV` fonksiyonu çağrıldığında tetiklenir.
-  - **Yetki:** Geçerli token (ve kullanıcının sadece kendi CV'sini sildiğinden emin olunmalı).
-  - **Response (Success):** `204 No Content`.
-
-### 5.3. Kullanıcı Profili (`/api/v1/users`)
-
-- **`PUT /me`**
-  - **Açıklama:** Giriş yapmış kullanıcının profil bilgilerini günceller.
-  - **Frontend Karşılığı:** `ProfileSettingsPage` sayfasında `handleInfoSubmit` ile çağrılır.
-  - **Yetki:** Geçerli token.
-  - **Request Body:** `{ "fullName": "string", "email": "string" }`.
-
-- **`PUT /me/password`**
-  - **Açıklama:** Giriş yapmış kullanıcının şifresini değiştirir.
-  - **Frontend Karşılığı:** `ProfileSettingsPage` sayfasında `handlePasswordSubmit` ile çağrılır.
-  - **Yetki:** Geçerli token.
-  - **Request Body:** `{ "currentPassword": "string", "newPassword": "string" }`.
-
-- **`DELETE /me`**
-  - **Açıklama:** Giriş yapmış kullanıcıyı ve ona ait tüm verileri (CV'ler dahil) kalıcı olarak siler.
-  - **Frontend Karşılığı:** `ProfileSettingsPage` sayfasındaki `handleDeleteAccount` ile çağrılır.
-  - **Yetki:** Geçerli token.
-
-### 5.4. Admin Paneli (`/api/v1/admin`)
-
-Tüm bu endpoint'ler `role: 'admin'` kontrolü ile korunmalıdır.
-
-- **`GET /stats`**: `AdminPage` "Genel Bakış" sekmesi için temel istatistikleri (`toplam kullanıcı`, `toplam CV` vb.) döndürür.
-- **`GET /users`**: `AdminPage` "Kullanıcılar" sekmesindeki tabloyu doldurur.
-- **`PUT /users/:id`**: `AdminUserModal`'da "Kaydet" butonuna (`handleSave`) tıklandığında çağrılır.
-- **`PUT /users/:id/status`**: `AdminUserModal`'da "Yasakla/Yasağı Kaldır" butonuna (`onToggleBan`) tıklandığında çağrılır. Request body: `{ "status": "'active' | 'banned'" }`
-- **`DELETE /users/:id`**: `AdminUserModal`'da "Kullanıcıyı Sil" butonuna (`handleDelete`) tıklandığında çağrılır.
-- **`GET /ads`**: `AdminPage` "Reklam Yönetimi" sekmesindeki mevcut banner'ları listeler.
-- **`POST /ads`**: "Yeni Banner Ekle" formu (`handleAdSubmit`) gönderildiğinde çağrılır.
-- **`PUT /ads/:id`**: Mevcut bir banner "Düzenle" modunda kaydedildiğinde (`handleAdSubmit`) çağrılır.
-- **`DELETE /ads/:id`**: Bir banner'ın yanındaki silme ikonuna (`onDeleteAd`) tıklandığında çağrılır.
-
-### 5.5. Gemini API Servisleri (`/api/v1/ai`)
-
-Bu endpoint'ler, Gemini API anahtarını güvende tutmak için **backend üzerinden** Gemini API'sine istek yapar.
-
-- **`POST /enhance-text`**
-  - **Açıklama:** Verilen metni Gemini ile daha profesyonel hale getirir. `gemini-2.5-flash` modeli hız ve maliyet için uygundur.
-  - **Frontend Karşılığı:** `CVEditorPage`'de "AI ile Geliştir" butonuna (`handleEnhance`) tıklandığında çağrılır.
-  - **Yetki:** Geçerli token.
-  - **Request Body:** `{ "text": "string", "lang": "'tr' | 'en'" }`.
-  - **Response:** `{ "enhancedText": "string" }`
-
-- **`POST /parse-cv`**
-  - **Açıklama:** Yüklenen dosyadan CV verisi çıkarır. Bu işlem daha karmaşık olduğu için **`gemini-2.5-pro`** modeli önerilir.
-  - **Frontend Karşılığı:** `CVUploader` bileşeninde `.pdf` veya `.docx` dosyası yüklendiğinde (`triggerAIParse`) çağrılır.
-  - **Yetki:** Geçerli token.
-  - **Request Body:** `multipart/form-data` formatında dosya. Backend bu dosyayı metne çevirmeli (PDF/DOCX kütüphaneleri kullanarak) ve metni Gemini'ye göndermelidir.
-  - **Response:** `CVData` nesnesinin bir alt kümesi (`Partial<CVData>`).
+-   **`hooks/useDebounce.ts`**: Kullanıcı yazarken sürekli API isteği atmamak için girişi geciktiren bir custom hook. `CVEditorPage`'de otomatik kaydetme için kullanılır.
+-   **`i18n/index.ts`**: Çoklu dil (TR/EN) desteği için çeviri metinlerini ve `LanguageContext`'i içerir.
+-   **`templates/`**: Her biri farklı bir CV tasarımını temsil eden 10 adet React bileşeni içerir (`MinimalistTemplate.tsx`, `CorporateTemplate.tsx` vb.). Bu bileşenler sadece `CVData` prop'u alıp görselleştirme yaparlar, iş mantığı içermezler.
+-   **`utils/`**: Yardımcı fonksiyonlar (`data.ts` içinde varsayılan CV verisi, `uuid.ts` içinde mock ID oluşturucu).
 
 ---
 
-## 6. Geliştirme Yol Haritası (Nereden Başlamalı?)
+## 2. Backend Teknolojileri ve Kurulum
 
-1.  **Veritabanı ve Proje Kurulumu:**
-    -   Seçtiğiniz backend teknolojisi (Node.js/Express, Python/FastAPI, vb.) için projeyi oluşturun.
-    -   Veritabanı bağlantısını kurun.
-    -   Yukarıdaki veri modellerine göre veritabanı şemalarını/modellerini oluşturun.
+-   **Dil/Platform:** Node.js
+-   **Framework:** Express.js
+-   **Veritabanı:** MongoDB (Mongoose ODM ile)
+-   **Kimlik Doğrulama:** JSON Web Tokens (JWT)
+-   **Şifreleme:** bcrypt
+-   **Dosya Yükleme (CV Parse için):** multer
 
-2.  **İlk Admin Kullanıcısını Oluşturma (Seeding):**
-    -   Veritabanı ilk kez oluşturulurken, `role: 'admin'` olan bir kullanıcıyı manuel olarak ekleyin. Örneğin: `admin@karaelmas.com` / şifre: `Karaelmas.034` (şifreyi **bcrypt** ile hash'leyerek!).
+**Kurulum Adımları (AI için talimat):**
+1.  `CreativeCv/backend/` klasörüne git.
+2.  `npm init -y` ile `package.json` oluştur.
+3.  Gerekli paketleri kur: `npm install express mongoose jsonwebtoken bcrypt cors dotenv multer`
+4.  Geliştirme için: `npm install -D nodemon`
+5.  `package.json`'daki `scripts` bölümüne `"start": "node server.js"` ve `"dev": "nodemon server.js"` ekle.
+6.  `server.js` (veya `index.js`) adında ana sunucu dosyasını oluştur.
+7.  `.env` dosyası oluştur ve içine `MONGO_URI`, `JWT_SECRET` ve `GEMINI_API_KEY` değişkenlerini ekle.
 
-3.  **Kimlik Doğrulama (Authentication) Endpoint'lerini Geliştirin:**
-    -   `POST /register`, `POST /login` ve `GET /me` endpoint'lerini yazın. JWT oluşturma ve doğrulama mantığını kurun.
-    -   Frontend'in `handleLogin` fonksiyonunu bu API'leri çağıracak şekilde güncelleyerek test edin.
+---
 
-4.  **CV Yönetimi (CRUD) Endpoint'lerini Geliştirin:**
-    -   `GET`, `POST`, `PUT`, `DELETE` işlemlerini `/api/v1/cvs` için tamamlayın.
-    -   **Her işlemde kullanıcının yetkisini (sadece kendi CV'leri üzerinde işlem yapabilme) kontrol edin.**
-    -   Kontrol Paneli ve CV Düzenleyici'nin bu API'lerle konuşmasını sağlayın.
+## 3. Veritabanı Modelleri (Mongoose Şemaları)
 
-5.  **Diğer Endpoint'leri Geliştirin:**
-    -   Kullanıcı profili ve admin paneli endpoint'lerini sırayla tamamlayın.
+Aşağıdaki Mongoose şemalarını `backend/models/` klasöründe oluştur. Bu şemalar, `frontend/types.ts` ile birebir uyumlu olmalıdır.
 
-6.  **Backend'i Dağıtma (Deployment):**
-    -   Backend uygulamanızı bir sunucuya (Heroku, Vercel, DigitalOcean vb.) dağıtın.
-    -   Frontend uygulamasındaki API isteklerinin bu sunucu adresine yapıldığından emin olun.
-    
-Bu kılavuz, backend geliştirme sürecini başlatmak için gereken tüm bilgileri sağlamaktadır. Başarılar!
+### `User.js`
+
+```javascript
+const mongoose = require('mongoose');
+
+const userSchema = new mongoose.Schema({
+    email: { type: String, required: true, unique: true, trim: true, lowercase: true },
+    fullName: { type: String, required: true },
+    password: { type: String, required: true }, // Bcrypt ile hash'lenmiş olacak
+    role: { type: String, enum: ['user', 'admin'], default: 'user' },
+    status: { type: String, enum: ['active', 'banned'], default: 'active' },
+    joinDate: { type: Date, default: Date.now }
+});
+
+module.exports = mongoose.model('User', userSchema);
+```
+
+### `CV.js`
+
+```javascript
+const mongoose = require('mongoose');
+const { Schema } = mongoose;
+
+// types.ts'deki tüm alt arayüzleri şema olarak tanımla
+const SkillSchema = new Schema({ name: String, level: Number });
+const ExperienceSchema = new Schema({ title: String, company: String, location: String, startDate: String, endDate: String, description: String });
+// ...diğerleri (Education, Language, Certificate etc.)
+
+const cvSchema = new Schema({
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+    title: { type: String, required: true },
+    personalInfo: {
+        fullName: String, email: String, phoneNumber: String, address: String,
+        linkedin: String, github: String, website: String, profilePicture: String,
+    },
+    summary: String,
+    experience: [ExperienceSchema],
+    education: [{ institution: String, degree: String, fieldOfStudy: String, startDate: String, endDate: String }],
+    skills: [SkillSchema],
+    languages: [{ name: String, proficiency: { type: String, enum: ['Beginner', 'Intermediate', 'Advanced', 'Fluent', 'Native'] } }],
+    certificates: [{ name: String, issuer: String, date: String }],
+    projects: [{ name: String, description: String, link: String }],
+    references: [{ name: String, relation: String, contact: String }],
+    hobbies: [{ name: String }],
+    createdAt: { type: Date, default: Date.now },
+    lastUpdated: { type: Date, default: Date.now }
+});
+
+module.exports = mongoose.model('CV', cvSchema);
+```
+
+### `AdBanner.js` (Admin Paneli için)
+
+```javascript
+const mongoose = require('mongoose');
+const { Schema } = mongoose;
+
+const adBannerSchema = new Schema({
+    imageUrl: { type: String, required: true },
+    linkUrl: { type: String, required: true },
+    placement: { type: String, enum: ['dashboard', 'templates'], required: true },
+    isActive: { type: Boolean, default: true }
+});
+
+module.exports = mongoose.model('AdBanner', adBannerSchema);
+```
+
+---
+
+## 4. Kritik Güvenlik Maddeleri (ZORUNLU)
+
+-   **API Anahtarını Gizle:** Gemini API anahtarı **ASLA** frontend'e gönderilmemelidir. Yapay zeka ile ilgili tüm işlemler backend'de, `.env` dosyasında saklanan `GEMINI_API_KEY` ile yapılmalıdır.
+-   **Şifre Hash'leme:** `User` modelini kaydetmeden önce `bcrypt.hash()` kullan. Giriş yaparken `bcrypt.compare()` ile karşılaştır.
+-   **Yetkilendirme:** API endpoint'lerini korumak için bir JWT middleware'i yaz. Bu middleware, `Authorization: Bearer <token>` başlığından token'ı alır, doğrular ve `req.user` içine kullanıcı bilgilerini (ID, rol vb.) ekler.
+-   **Veri Sahipliği:** Bir kullanıcının CV'sini güncellerken veya silerken (`PUT /api/v1/cvs/:id`), istenen CV'nin `userId`'sinin, token'dan gelen `req.user.id` ile eşleştiğini KESİNLİKLE kontrol et. Bu, başkalarının CV'lerini değiştirmesini engeller.
+-   **Admin Rolü Koruması:** Admin endpoint'leri (`/api/v1/admin/*`) için yazdığın middleware, `req.user.role === 'admin'` kontrolü yapmalıdır.
+-   **Girdi Doğrulama (Input Validation):** `express-validator` gibi bir kütüphane kullanarak frontend'den gelen tüm verileri (özellikle `req.body`) sunucu tarafında doğrula.
+
+---
+
+## 5. API Endpoint Spesifikasyonları
+
+Tüm endpoint'ler `/api/v1` ön eki ile başlamalıdır.
+
+### 5.1. Kimlik Doğrulama (`/auth`)
+
+-   **`POST /register`**
+    -   **Frontend Bağlantısı:** Gelecekte eklenecek "Kayıt Ol" sayfası.
+    -   **Açıklama:** Yeni kullanıcı kaydı. Şifreyi hash'le.
+    -   **Response:** `{ token, user: { id, fullName, email, role } }`
+
+-   **`POST /login`**
+    -   **Frontend Bağlantısı:** `LoginPage.tsx` -> `App.tsx`'deki `handleLogin`.
+    -   **Açıklama:** Kullanıcı girişi. `status: 'banned'` ise 403 Forbidden döndür.
+    -   **Response:** `{ token, user: { id, fullName, email, role } }`
+
+-   **`GET /me`**
+    -   **Frontend Bağlantısı:** `App.tsx`'deki `useEffect` (sayfa yenilendiğinde oturumu doğrulamak için).
+    -   **Açıklama:** Token ile kullanıcı bilgilerini getirir.
+    -   **Yetki:** User Token.
+    -   **Response:** `{ user: { id, fullName, email, role } }`
+
+### 5.2. CV Yönetimi (`/cvs`)
+
+-   **`GET /`**
+    -   **Frontend Bağlantısı:** `DashboardPage.tsx`.
+    -   **Açıklama:** Giriş yapmış kullanıcıya ait tüm CV'leri listeler.
+    -   **Yetki:** User Token.
+
+-   **`POST /`**
+    -   **Frontend Bağlantısı:** `DashboardPage.tsx`'deki "Yeni CV" butonu -> `handleNewCV`.
+    -   **Açıklama:** Yeni CV oluşturur. `req.user.id`'yi `userId` olarak atar.
+    -   **Yetki:** User Token.
+
+-   **`PUT /:id`**
+    -   **Frontend Bağlantısı:** `CVEditorPage.tsx` -> `handleSaveCV`.
+    -   **Açıklama:** ID'si verilen CV'yi günceller. **Veri sahipliği kontrolü ZORUNLUDUR.**
+    -   **Yetki:** User Token.
+
+-   **`DELETE /:id`**
+    -   **Frontend Bağlantısı:** `DashboardPage.tsx` -> `handleDeleteCV`.
+    -   **Açıklama:** ID'si verilen CV'yi siler. **Veri sahipliği kontrolü ZORUNLUDUR.**
+    -   **Yetki:** User Token.
+
+### 5.3. Yapay Zeka Servisleri (`/ai`)
+
+-   **`POST /enhance-text`**
+    -   **Frontend Bağlantısı:** `CVEditorPage.tsx`'deki "AI ile Geliştir" butonu -> `services.ts`'deki `enhanceTextWithAI`.
+    -   **Açıklama:** Gelen metni Gemini API'ye gönderir ve sonucu döndürür. `GEMINI_API_KEY` backend'de kullanılır.
+    -   **Yetki:** User Token.
+    -   **Request Body:** `{ text: "...", lang: "tr" }`
+
+-   **`POST /parse-cv`**
+    -   **Frontend Bağlantısı:** `CVUploader.tsx` -> `services.ts`'deki `parseCVWithAI`.
+    -   **Açıklama:** `multer` ile yüklenen PDF/DOCX dosyasını metne çevirir (sunucuda `pdf-parse`, `mammoth` gibi kütüphaneler kullan), metni yapılandırılmış JSON istemek için Gemini API'ye gönderir.
+    -   **Yetki:** User Token.
+    -   **Request Body:** `multipart/form-data` formatında dosya.
+    -   **Response:** `Partial<CVData>` formatında JSON.
+
+### 5.4. Admin Paneli (`/admin`)
+
+-   **`GET /users`**, **`PUT /users/:id`**, **`DELETE /users/:id`** vb.
+    -   **Frontend Bağlantısı:** `AdminPage.tsx` ve `AdminUserModal.tsx`.
+    -   **Açıklama:** `BACKEND_INTEGRATION.md` dosyasının eski versiyonunda detaylandırıldığı gibi tüm admin CRUD işlemlerini uygula.
+    -   **Yetki:** Admin Token.
+
+---
+
+## 6. Frontend'in Backend'e Bağlanması
+
+Frontend'de `localStorage` kullanan veya doğrudan Gemini API'yi çağıran yerleri, oluşturduğun backend API'sine `fetch` veya `axios` ile istek atacak şekilde güncellemelisin. **Değiştirilmesi gereken ana dosyalar şunlardır:**
+
+### 1. `frontend/services.ts` (En Önemli Değişiklik)
+
+Bu dosyadaki fonksiyonlar, doğrudan Gemini API'yi çağırmak yerine senin oluşturduğun backend'e istek atmalıdır.
+
+**Örnek `enhanceTextWithAI` Değişikliği:**
+
+```typescript
+// ESKİ HALİ (Doğrudan Gemini'ye istek)
+// import { GoogleGenAI } from "@google/genai";
+// const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// ...
+// const response = await ai.models.generateContent(...);
+// return response.text.trim();
+
+// YENİ HALİ (Backend'e istek)
+export const enhanceTextWithAI = async (text: string, lang: 'tr' | 'en' = 'tr'): Promise<string> => {
+  const token = localStorage.getItem('token'); // Token'ı al
+  if (!token) throw new Error("Not authenticated");
+  
+  const response = await fetch('/api/v1/ai/enhance-text', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({ text, lang })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || "AI enhancement failed");
+  }
+
+  const data = await response.json();
+  return data.enhancedText;
+};
+```
+
+`parseCVWithAI` fonksiyonu da benzer şekilde, dosyayı `FormData` ile `/api/v1/ai/parse-cv` endpoint'ine gönderecek şekilde güncellenmelidir.
+
+### 2. `frontend/App.tsx`
+
+`localStorage` işlemleri API çağrılarıyla değiştirilmelidir.
+
+-   **`useEffect` (ilk yükleme):** `localStorage`'dan `currentUser` okumak yerine, `token` varsa `/api/v1/auth/me` endpoint'ine istek atarak kullanıcıyı doğrula ve `setCurrentUser` ile state'i güncelle.
+-   **`handleLogin`:** `/api/v1/auth/login`'e istek at. Başarılı olursa, dönen `token`'ı `localStorage`'a kaydet ve `user` verisini state'e ata.
+-   **`handleLogout`:** `localStorage`'dan `token`'ı sil.
+-   **CV Fonksiyonları (`handleSaveCV`, `handleDeleteCV` vb.):** Bu fonksiyonların içindeki `localStorage.setItem` çağrıları, ilgili API endpoint'lerine (`PUT /api/v1/cvs/:id`, `DELETE /api/v1/cvs/:id`) `fetch` çağrıları ile değiştirilmelidir. CV verileri artık `allCVs` state'i için `useEffect` içinde `/api/v1/cvs` endpoint'inden çekilmelidir.
+
+Bu kılavuz, backend geliştirme sürecini başlatmak ve frontend ile tam entegrasyonu sağlamak için gereken tüm bilgileri içermektedir. Başarılar!
